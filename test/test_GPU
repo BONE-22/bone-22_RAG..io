@@ -1,0 +1,72 @@
+import torch
+import sys
+import subprocess
+import pynvml
+
+def get_nvidia_driver_version():
+    """透過 nvidia-smi 獲取驅動版本"""
+    try:
+        output = subprocess.check_output(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader,nounits"])
+        return output.decode().strip()
+    except:
+        return None
+
+def check_hardware():
+    print("="*60)
+    print(f"🐍 Python 版本: {sys.version.split()[0]}")
+    print(f"🔥 PyTorch 版本: {torch.__version__}")
+    
+    # 獲取系統資訊
+    cuda_available = torch.cuda.is_available()
+    driver_version = get_nvidia_driver_version()
+    
+    print(f"🚀 PyTorch CUDA 可用性: {'✅ 是' if cuda_available else '❌ 否'}")
+    
+    if cuda_available:
+        current_device = torch.cuda.current_device()
+        gpu_name = torch.cuda.get_device_name(current_device)
+        print(f"💻 偵測到 GPU 型號: {gpu_name}")
+        
+        # 顯存資訊
+        try:
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            print(f"📊 顯存狀態: 已用 {info.used // 1024**2}MB / 總量 {info.total // 1024**2}MB")
+            pynvml.nvmlShutdown()
+        except:
+            pass
+    else:
+        print("\n🔎 診斷分析：")
+        
+        # 狀況 1: 根本沒裝 NVIDIA 驅動
+        if driver_version is None:
+            print("❌ 錯誤：找不到 NVIDIA 驅動程式。")
+            print("💡 建議：請去 NVIDIA 官網下載並安裝對應顯卡的驅動。")
+        
+        # 狀況 2: 有驅動但 PyTorch 抓不到 
+        else:
+            print(f"ℹ️  偵測到 NVIDIA 驅動版本: {driver_version}")
+            
+            # 檢查 PyTorch 是否為 CPU 版本 (版本號通常會帶有 +cpu)
+            if "cpu" in torch.__version__:
+                print("❌ 錯誤：你安裝的是 PyTorch [CPU 版本]。")
+                print("💡 建議：請移除目前的 torch 並重新安裝 GPU 版本。")
+            else:
+                # 簡單邏輯：如果驅動版本 < 450，通常不支援較新的 CUDA 11+
+                try:
+                    major_v = float(driver_version.split('.')[0])
+                    if major_v < 450:
+                        print("❌ 錯誤：您的 NVIDIA 驅動版本過舊。")
+                        print("💡 建議：請更新顯卡驅動程式至最新版本。")
+                    else:
+                        print("❌ 錯誤：PyTorch 與 CUDA 環境配置不匹配。")
+                        print("💡 建議：嘗試指定版本安裝，例如：")
+                        print("   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121")
+                except:
+                    print("❌ 錯誤：無法識別驅動與環境的相容性，建議重新配置環境。")
+
+    print("="*60)
+
+if __name__ == "__main__":
+    check_hardware()
